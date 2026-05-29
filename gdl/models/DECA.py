@@ -26,34 +26,34 @@ import torch
 import torchvision
 import torch.nn.functional as F
 import torchvision.transforms.functional as F_v
-import adabound
+#import adabound
 from pytorch_lightning import LightningModule
 from pytorch_lightning.loggers import WandbLogger
-from gdl.layers.losses.EmoNetLoss import EmoNetLoss, create_emo_loss, create_au_loss
+#from gdl.layers.losses.EmoNetLoss import EmoNetLoss, create_emo_loss, create_au_loss
 import numpy as np
 # from time import time
 from skimage.io import imread
 from skimage.transform import resize
-import cv2
+#import cv2
 from pathlib import Path
 
-from gdl.models.Renderer import SRenderY
+# from gdl.models.Renderer import SRenderY
 from gdl.models.DecaEncoder import ResnetEncoder, SecondHeadResnet, SwinEncoder
 from gdl.models.DecaDecoder import Generator, GeneratorAdaIn
 from gdl.models.DecaFLAME import FLAME, FLAMETex, FLAME_mediapipe
-from gdl.models.EmotionMLP import EmotionMLP
+#from gdl.models.EmotionMLP import EmotionMLP
 
-import gdl.layers.losses.DecaLosses as lossfunc
-import gdl.layers.losses.MediaPipeLandmarkLosses as lossfunc_mp
+#import gdl.layers.losses.DecaLosses as lossfunc
+#import gdl.layers.losses.MediaPipeLandmarkLosses as lossfunc_mp
 import gdl.utils.DecaUtils as util
-from gdl.datasets.AffWild2Dataset import Expression7
-from gdl.datasets.AffectNetDataModule import AffectNetExpressions
-from gdl.utils.lightning_logging import _log_array_image, _log_wandb_image, _torch_image2np
+#from gdl.datasets.AffWild2Dataset import Expression7
+#from gdl.datasets.AffectNetDataModule import AffectNetExpressions
+#from gdl.utils.lightning_logging import _log_array_image, _log_wandb_image, _torch_image2np
 
 torch.backends.cudnn.benchmark = True
 from enum import Enum
 from gdl.utils.other import class_from_str, get_path_to_assets
-from gdl.layers.losses.VGGLoss import VGG19Loss
+#from gdl.layers.losses.VGGLoss import VGG19Loss
 from omegaconf import OmegaConf, open_dict
 
 import pytorch_lightning.plugins.environments.lightning_environment as le
@@ -935,7 +935,7 @@ class DecaModule(LightningModule):
         return detail_conditioning_list
 
 
-    def decode(self, codedict, training=True, render=True, **kwargs) -> dict:
+    def decode(self, codedict, training=True, render=False, **kwargs) -> dict:
         """
         Forward decoding pass of the model. Takes the latent code predicted by the encoding stage and reconstructs and renders the shape.
         :param codedict: Batch dict of the predicted latent codes
@@ -1200,7 +1200,7 @@ class DecaModule(LightningModule):
                 codedict['uv_vis_mask'] = uv_vis_mask
                 codedict['uv_mask'] = uv_mask
             codedict['uv_z'] = uv_z
-            codedict['displacement_map'] = uv_z + self.deca.fixed_uv_dis[None, None, :, :]
+            codedict['displacement_map'] = uv_z #+ self.deca.fixed_uv_dis[None, None, :, :]
 
         return codedict
 
@@ -2771,13 +2771,13 @@ class DECA(torch.nn.Module):
 
         self.mode = DecaMode[str(config.mode).upper()]
         self._create_detail_generator()
-        self._init_deep_losses()
-        self._setup_neural_rendering()
+        #self._init_deep_losses()
+        #self._setup_neural_rendering()
 
     def _reinitialize(self):
         self._create_model()
-        self._setup_renderer()
-        self._init_deep_losses()
+        #self._setup_renderer()
+        #self._init_deep_losses()
         self.face_attr_mask = util.load_local_mask(image_size=self.config.uv_size, mode='bbx')
 
     def _get_num_shape_params(self): 

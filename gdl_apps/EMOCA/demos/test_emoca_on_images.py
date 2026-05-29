@@ -38,8 +38,8 @@ def main():
     parser.add_argument('--output_folder', type=str, default="image_output", help="Output folder to save the results to.")
     parser.add_argument('--model_name', type=str, default='EMOCA_v2_lr_mse_20', help='Name of the model to use.')
     parser.add_argument('--path_to_models', type=str, default=str(Path(gdl.__file__).parents[1] / "assets/EMOCA/models"))
-    parser.add_argument('--save_images', type=bool, default=True, help="If true, output images will be saved")
-    parser.add_argument('--save_codes', type=bool, default=False, help="If true, output FLAME values for shape, expression, jaw pose will be saved")
+    parser.add_argument('--save_images', type=bool, default=False, help="If true, output images will be saved")
+    parser.add_argument('--save_codes', type=bool, default=True, help="If true, output FLAME values for shape, expression, jaw pose will be saved")
     parser.add_argument('--save_mesh', type=bool, default=False, help="If true, output meshes will be saved")
     parser.add_argument('--mode', type=str, default='detail', help="coarse or detail")
     
@@ -58,11 +58,11 @@ def main():
 
     # 1) Load the model
     emoca, conf = load_model(path_to_models, model_name, mode)
-    emoca.cuda()
+    #emoca.cuda()
     emoca.eval()
 
     # 2) Create a dataset
-    dataset = TestData(input_folder, face_detector="fan", max_detection=20)
+    dataset = TestData(input_folder, iscrop=False,face_detector="none", max_detection=20)
 
     ## 4) Run the model on the data
     for i in auto.tqdm( range(len(dataset))):

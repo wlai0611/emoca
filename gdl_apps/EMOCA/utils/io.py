@@ -1,15 +1,15 @@
 from gdl_apps.EMOCA.utils.load import load_model
-from gdl.utils.FaceDetector import FAN
-from gdl.datasets.FaceVideoDataModule import TestFaceVideoDM
+#from gdl.utils.FaceDetector import FAN
+#from gdl.datasets.FaceVideoDataModule import TestFaceVideoDM
 import gdl
-import matplotlib.pyplot as plt
-import gdl.utils.DecaUtils as util
+#import matplotlib.pyplot as plt
+#import gdl.utils.DecaUtils as util
 import numpy as np
 import os
 import torch
 from skimage.io import imsave
 from pathlib import Path
-from gdl.utils.lightning_logging import _fix_image
+#from gdl.utils.lightning_logging import _fix_image
 
 
 def torch_img_to_np(img):
@@ -75,7 +75,7 @@ def save_codes(output_folder, name, vals, i = None):
 
 
 def test(deca, img):
-    img["image"] = img["image"].cuda()
+    img["image"] = img["image"]#.cuda()
     if len(img["image"].shape) == 3:
         img["image"] = img["image"].view(1,3,224,224)
     vals = deca.encode(img, training=False)
@@ -86,6 +86,7 @@ def test(deca, img):
 def decode(emoca, values, training=False):
     with torch.no_grad():
         values = emoca.decode(values, training=training)
+        print(values)
         # losses = deca.compute_loss(values, training=False)
         # batch_size = values["expcode"].shape[0]
         uv_detail_normals = None

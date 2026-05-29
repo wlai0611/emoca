@@ -5,7 +5,7 @@ from omegaconf import OmegaConf
 
 from gdl.models.DECA import DecaModule
 from gdl.models.IO import locate_checkpoint
-from gdl_apps.EMOCA.training.test_and_finetune_deca import prepare_data
+#from gdl_apps.EMOCA.training.test_and_finetune_deca import prepare_data
 from gdl.utils.other import get_path_to_assets
 
 
@@ -140,16 +140,16 @@ def replace_asset_dirs(cfg, output_dir : Path, ):
         cfg[mode].inout.checkpoint_dir = str(output_dir / mode / "checkpoints")
 
         cfg[mode].model.tex_path = str(asset_dir / "FLAME/texture/FLAME_albedo_from_BFM.npz")
-        cfg[mode].model.topology_path = str(asset_dir / "FLAME/geometry/head_template.obj")
+        cfg[mode].model.topology_path = str(asset_dir / "FLAME/geometry/head_template.obj")##
         cfg[mode].model.fixed_displacement_path = str(asset_dir / 
-                "FLAME/geometry/fixed_uv_displacements/fixed_displacement_256.npy")
-        cfg[mode].model.flame_model_path = str(asset_dir / "FLAME/geometry/generic_model.pkl")
-        cfg[mode].model.flame_lmk_embedding_path = str(asset_dir / "FLAME/geometry/landmark_embedding.npy")
-        cfg[mode].model.flame_mediapipe_lmk_embedding_path = str(asset_dir / "FLAME/geometry/mediapipe_landmark_embedding.npz")
-        cfg[mode].model.face_mask_path = str(asset_dir / "FLAME/mask/uv_face_mask.png")
-        cfg[mode].model.face_eye_mask_path  = str(asset_dir / "FLAME/mask/uv_face_eye_mask.png")
-        cfg[mode].model.pretrained_modelpath = str(asset_dir / "DECA/data/deca_model.tar")
-        cfg[mode].model.pretrained_vgg_face_path = str(asset_dir /  "FaceRecognition/resnet50_ft_weight.pkl") 
+                "FLAME/geometry/fixed_uv_displacements/fixed_displacement_256.npy")##
+        cfg[mode].model.flame_model_path = str(asset_dir / "FLAME/geometry/generic_model.pkl")##
+        cfg[mode].model.flame_lmk_embedding_path = str(asset_dir / "FLAME/geometry/landmark_embedding.npy")##
+        cfg[mode].model.flame_mediapipe_lmk_embedding_path = str(asset_dir / "FLAME/geometry/mediapipe_landmark_embedding.npz")#
+        cfg[mode].model.face_mask_path = str(asset_dir / "FLAME/mask/uv_face_mask.png")##
+        cfg[mode].model.face_eye_mask_path  = str(asset_dir / "FLAME/mask/uv_face_eye_mask.png")##
+        cfg[mode].model.pretrained_modelpath = str(asset_dir / "DECA/data/deca_model.tar")##
+        cfg[mode].model.pretrained_vgg_face_path = str(asset_dir /  "FaceRecognition/resnet50_ft_weight.pkl") ##
         # cfg.model.emonet_model_path = str(asset_dir /  "EmotionRecognition/image_based_networks/ResNet50")
         cfg[mode].model.emonet_model_path = ""
     

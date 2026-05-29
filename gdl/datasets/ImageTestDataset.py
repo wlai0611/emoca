@@ -20,9 +20,9 @@ All rights reserved.
 
 import glob
 from glob import glob
-import cv2
+#import cv2
 import numpy as np
-import scipy
+#import scipy
 import torch
 from skimage.io import imread
 from skimage.transform import rescale, estimate_transform, warp
@@ -30,7 +30,7 @@ from torch.utils.data import Dataset
 
 # from gdl.datasets.FaceVideoDataModule import add_pretrained_deca_to_path
 from gdl.datasets.ImageDatasetHelpers import bbox2point
-from gdl.utils.FaceDetector import FAN
+#from gdl.utils.FaceDetector import FAN
 
 import os
 
@@ -64,7 +64,7 @@ class TestData(Dataset):
         #     self.face_detector = detectors.MTCNN()
         else:
             print(f'please check the detector: {face_detector}')
-            exit()
+            #exit()
 
     def __len__(self):
         return len(self.imagepath_list)
