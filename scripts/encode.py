@@ -1,0 +1,154 @@
+from gdl_apps.EMOCA.utils.load import load_model
+import torch
+import cv2
+import numpy as np
+from pathlib import Path
+from ultralytics import YOLO
+from skimage.transform import estimate_transform, warp
+
+def make_obj(verts,triangles,filename):
+  with open(filename, "w") as f:
+
+    for v in verts:
+        f.write(f"v {v[0]} {v[1]} {v[2]}\n")
+
+    for tri in triangles:
+        tri = tri + 1
+        f.write(f"f {tri[0]} {tri[1]} {tri[2]}\n")
+
+def bbox2point(left, right, top, bottom):
+    old_size = (right - left + bottom - top)/2
+    center = np.array([right - (right - left) / 2.0, bottom - (bottom - top) / 2.0  + old_size*0.12])
+    return old_size, center
+
+def get_face_center_size(box,scale=1.25):
+  l,t,r,b = box
+  old_size= (r-l+b-t)/2
+  center  = (l+r)/2. , (t+b)/2. + old_size*0.12 #shift down 12%
+  return scale*old_size, center  
+
+def square_crop(center, size):
+  corner1 = center[0]-size/2,center[1]-size/2
+  corner2 = center[0]-size/2,center[1]+size/2
+  corner3 = center[0]+size/2,center[1]-size/2
+  return np.array([corner1,corner2,corner3])
+
+class VideoIterator(torch.utils.data.IterableDataset):
+  def __init__(self,video_file,stride=1):
+    self.video_file = video_file
+    self.stride = stride
+    self.frame_counter = 0
+  def __iter__(self):
+    self.reader = cv2.VideoCapture(self.video_file)
+    self.height = int(self.reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    self.width  = int(self.reader.get(cv2.CAP_PROP_FRAME_WIDTH))
+    while True:
+      playing, bgr_image = self.reader.read()
+      self.frame_counter += 1
+      if not playing:
+        break
+      if self.frame_counter % self.stride == 0:
+        rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+        rgb_image = cv2.resize(rgb_image, (32*(self.width//32),32*(self.height//32)))
+        rgb_image = rgb_image.transpose(2,0,1)
+        rgb_image = rgb_image.astype(np.float32)/255.
+        yield self.frame_counter,rgb_image
+    self.reader.release()
+
+def video_to_flame_df(loader, yolo, deca, obj_folder=None):
+  """
+  loader: torch.utils.data.DataLoader that returns frame numbers and a batch of images B*3*H*W for every iteration
+  yolo: pretrained YOLO model
+  deca: pretrained DECA model
+  obj_folder: Path object pointing to where to save OBJ files, if omitted, we dont save OBJ files
+  
+  returns pandas DataFrame each row is the FLAME coefficients for a video frame
+  """
+  triangles = deca.deca.flame.faces_tensor #each row contains indices pointing to particular vertex of face
+  resolution_inp = 224
+  has_face_mask  = []
+  frame_numbers  = []
+  data = {'posecode':[],'cam':[],'shapecode':[],'expcode':[]} #each key stores list of tensors
+  for b,(batch_idx, batch) in enumerate(loader):
+    #CROP FACES
+    batch_idx = batch_idx.cpu().numpy()
+    frame_numbers.extend(batch_idx.tolist())
+    H = batch.shape[2]
+    W = batch.shape[3]
+    with torch.no_grad():
+      detections = yolo.predict(batch,iou=0.7,conf=0.7,verbose=False)
+    processed  = torch.zeros(size=(len(batch),3,resolution_inp,resolution_inp),dtype=torch.float32,device=yolo.device.type)
+    for d,detection in enumerate(detections):
+      boxes = detection.boxes.xyxy
+      if len(boxes) == 0:
+        has_face_mask.append(0)
+        best_box = torch.tensor([0,0,W,H],dtype=torch.int)
+      else:
+        has_face_mask.append(1)
+        widths   = boxes[:,2] - boxes[:,0]
+        heights  = boxes[:,3] - boxes[:,1]
+        areas    = widths * heights
+        best_idx = areas.argmax()
+        best_box = boxes[best_idx].cpu().numpy().astype(int)
+      new_size, center = get_face_center_size(best_box)
+      src_pts = square_crop(center,new_size)
+      DST_PTS = np.array([[0,0], [0,resolution_inp - 1], [resolution_inp - 1, 0]])
+      tform   = estimate_transform('similarity', src_pts, DST_PTS)
+      image   = batch[d].cpu().numpy().transpose(1,2,0)
+      dst_image=warp(image, tform.inverse, output_shape=(resolution_inp, resolution_inp))
+      dst_image= dst_image.transpose(2,0,1)
+      processed[d] = torch.tensor(dst_image).float()
+    #encode expects dict {"image":tensor[Batch*Ring*Channels*Height*Width]
+    processed = {'image': processed.unsqueeze(dim=1)}#shape B*1*3*224*224
+    #COMPUTE FLAME COEFFICIENTS
+    with torch.no_grad():
+      codedict = deca.encode(processed, training=False)
+      #ADD TO CONTAINER
+      for key,value in data.items():
+        value.append(codedict[key])
+      if obj_folder:
+        with torch.no_grad():
+          opdict = deca.decode(codedict, training=False)
+    if obj_folder:
+      obj_folder.mkdir(exist_ok=True)
+      verts = opdict['verts']
+      for frame_num,vert in zip(batch_idx,verts):
+        make_obj(vert,triangles,obj_folder/f"{frame_num:06d}.obj")
+  #concatenate list of tensors into one tensor for each key
+  concatenated_data = {}
+  for key, value in data.items():
+    concatenated_data[key] = torch.cat(value,dim=0).cpu().numpy()
+  concatenated_data['has_face'] = has_face_mask
+  concatenated_data['frame_number'] = frame_numbers
+  return concatenated_data
+
+#path to save obj files, if None, we dont save obj files
+obj_folder = Path("test_objs")
+obj_folder.mkdir(exist_ok=True)
+#instantiate emoca model
+model_path = "assets/EMOCA/models"
+emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
+emoca.eval()
+
+#load YOLO
+yolo_weights = "assets/YOLO/yolov8n-face-lindevs.pt"
+detector = YOLO(yolo_weights)
+
+#load a batch of images
+video_folder = Path("videos")
+video_file   = video_folder / "crying.mp4"
+dataset = VideoIterator(video_file.as_posix(),stride=3) #yield every 6th frame
+loader  = torch.utils.data.DataLoader(dataset, batch_size=4)
+
+data = video_to_flame_df(loader,detector,emoca,obj_folder=obj_folder)
+np.savez("flame_coefficients.npz", **data)
+
+#iterator = iter(loader)
+#frame_number, frames = next(iterator) #shape (B,3,H,W)
+
+#encode them with emoca
+
+
+#save to csv file with columns: frame_number, shape_code, expression_code, jaw_pose_code
+
+print()
