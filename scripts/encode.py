@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from ultralytics import YOLO
 from skimage.transform import estimate_transform, warp
-
+import argparse
 def make_obj(verts,triangles,filename):
   with open(filename, "w") as f:
 
@@ -122,33 +122,33 @@ def video_to_flame_df(loader, yolo, deca, obj_folder=None):
   concatenated_data['frame_number'] = frame_numbers
   return concatenated_data
 
-#path to save obj files, if None, we dont save obj files
-obj_folder = Path("test_objs")
-obj_folder.mkdir(exist_ok=True)
-#instantiate emoca model
-model_path = "assets/EMOCA/models"
-emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
-emoca.eval()
+if __name__ == "__main__":
+  parser = argparse.ArgumentParser(description="Encode video frames into FLAME coefficients")
+  parser.add_argument("--yolo", type=str, default="assets/YOLO/yolov8n-face-lindevs.pt", help="Path to YOLO weights")
+  parser.add_argument("--video", type=str, help="Path to input video file")
+  parser.add_argument("--stride", type=int, default=6, help="Number of frames to skip between each processed frame")
+  parser.add_argument("--batch_size", type=int, default=4, help="Batch size for processing frames")
+  parser.add_argument("--emoca", type=str, default="assets/EMOCA/models", help="Path to folder containing EMOCA_v2_lr_mse_20 folder")
+  parser.add_argument("--obj", type=str, help="Path to folder to save OBJ files, if None, we dont save OBJ files")
+  parser.add_argument("--npz", type=str, help="Path to save FLAME coefficients as .npz file")
+  args = parser.parse_args()
 
-#load YOLO
-yolo_weights = "assets/YOLO/yolov8n-face-lindevs.pt"
-detector = YOLO(yolo_weights)
+  #instantiate emoca model
+  model_path = args.emoca
+  emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
+  emoca.eval()
 
-#load a batch of images
-video_folder = Path("videos")
-video_file   = video_folder / "crying.mp4"
-dataset = VideoIterator(video_file.as_posix(),stride=3) #yield every 6th frame
-loader  = torch.utils.data.DataLoader(dataset, batch_size=4)
+  #load YOLO
+  detector = YOLO(args.yolo)
 
-data = video_to_flame_df(loader,detector,emoca,obj_folder=obj_folder)
-np.savez("flame_coefficients.npz", **data)
+  #load a batch of images
+  dataset = VideoIterator(args.video,stride=args.stride) #yield every 6th frame
+  loader  = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size)
 
-#iterator = iter(loader)
-#frame_number, frames = next(iterator) #shape (B,3,H,W)
-
-#encode them with emoca
-
-
-#save to csv file with columns: frame_number, shape_code, expression_code, jaw_pose_code
-
-print()
+  #path to save obj files, if None, we dont save obj files
+  obj_folder = args.obj
+  if obj_folder is not None:
+    obj_folder = Path(obj_folder)
+  data = video_to_flame_df(loader,detector,emoca,obj_folder=obj_folder)
+  if args.npz:
+    np.savez(args.npz, **data)
