@@ -1,0 +1,30 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Demo",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "gdl_apps.EMOCA.demos.test_emoca_on_images",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+        },
+        {
+            "name": "Lebron",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "gdl_apps.EMOCA.demos.test_emoca_on_images",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": ["--input_folder","assets/data/EMOCA_test_example_data/images/lebron"]
+        },   
+        {
+            "name": "encode",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/encode.py",
+            "justMyCode": false,
+            "console": "integratedTerminal"        
+        },            
+    ]   
+}
