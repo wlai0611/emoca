@@ -26,14 +26,16 @@ def square_crop(center, size):
   return np.array([corner1,corner2,corner3])
 
 class VideoIterator(torch.utils.data.IterableDataset):
-  def __init__(self,video_file,stride=1):
+  def __init__(self,video_file,samples_per_second=1):
     self.video_file = video_file
-    self.stride = stride
+    self.samples_per_second = samples_per_second
     self.frame_counter = 0
   def __iter__(self):
     self.reader = cv2.VideoCapture(self.video_file)
     self.height = int(self.reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     self.width  = int(self.reader.get(cv2.CAP_PROP_FRAME_WIDTH))
+    self.frames_per_second = int(self.reader.get(cv2.CAP_PROP_FPS))
+    self.stride = max(1,self.frames_per_second//self.samples_per_second)
     while True:
       playing, bgr_image = self.reader.read()
       self.frame_counter += 1
@@ -120,7 +122,7 @@ if __name__ == "__main__":
   parser.add_argument("--videos", required=True, type=str, help="Folder of videos")
   parser.add_argument("--out", required=True, type=str, help="Folder to save FLAME coefficients as .npz file")
   parser.add_argument("--yolo", type=str, default="assets/YOLO/yolov8n-face-lindevs.pt", help="Path to YOLO weights")
-  parser.add_argument("--stride", type=int, default=6, help="Number of frames to skip between each processed frame")
+  parser.add_argument("--samples_per_second", type=int, default=4, help="Number of frames to sample per second from the video")
   parser.add_argument("--batch_size", type=int, default=4, help="Batch size for processing frames")
   parser.add_argument("--emoca", type=str, default="assets/EMOCA/models", help="Path to folder containing EMOCA_v2_lr_mse_20 folder")
   parser.add_argument("--obj", action="store_true", help="Whether to save OBJ files")
@@ -151,7 +153,7 @@ if __name__ == "__main__":
     if video_file.suffix not in [".mp4",".avi",".mov"]:
       continue
     #load a batch of images
-    dataset = VideoIterator(video_file.as_posix(),stride=args.stride) #yield every 6th frame
+    dataset = VideoIterator(video_file.as_posix(), samples_per_second=args.samples_per_second)
     loader  = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
     if args.obj:
       obj = out_folder/video_file.stem
