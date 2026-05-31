@@ -22,9 +22,10 @@
             "name": "encode",
             "type": "debugpy",
             "request": "launch",
-            "program": "scripts/encode.py",
+            "program": "encode.py",
             "justMyCode": false,
-            "console": "integratedTerminal"        
+            "console": "integratedTerminal",
+            "args": ["--videos","videos/test"]        
         },            
     ]   
 }
