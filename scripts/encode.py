@@ -137,10 +137,17 @@ if __name__ == "__main__":
   model_path = args.emoca
   emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
   emoca.eval()
-
+  
   #load YOLO
   detector = YOLO(args.yolo)
 
+  if torch.cuda.is_available():
+    device = "cuda"
+    emoca.cuda()
+    detector.to("cuda")
+  else:
+    device = "cpu"
+  print(device)
   #load a batch of images
   dataset = VideoIterator(args.video,stride=args.stride) #yield every 6th frame
   loader  = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size)
