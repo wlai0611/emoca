@@ -161,5 +161,6 @@ if __name__ == "__main__":
       obj = None
     data = video_to_flame_df(loader,detector,emoca,obj_folder=obj,device=device)
     filename = out_folder/f"{video_file.stem}.npz"
-    np.savez(filename, frame_number = data['frame_number'], expcode = data["expcode"], has_face=data["has_face"])
+    np.savez(filename, frame_number = data['frame_number'], expcode = data["expcode"], 
+             has_face=data["has_face"], fps = dataset.frames_per_second)
     logging.info(f"Finished processing {video_file.stem}, saved to {filename}")
