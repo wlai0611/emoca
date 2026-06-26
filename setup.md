@@ -15,6 +15,10 @@ pip install numpy==1.23.5
 pip install torchmetrics==0.6.2
 pip install pytorch-lightning==1.4.9
 pip install opencv-python==4.5.5.64
+pip install scikit-image
+pip install ultralytics
+pip install -e .
+pip install numpy==1.23.5
 ```
 
 Now every time I want to run in inference, to avoid 
