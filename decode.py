@@ -13,7 +13,7 @@ class NPZIterator(torch.utils.data.IterableDataset):
     frame_numbers = data['frame_number']
     codedict = {"expcode": torch.from_numpy(data["expcode"]),
                 "shapecode": torch.zeros((data["expcode"].shape[0],100)),
-                "posecode": torch.zeros((data["expcode"].shape[0],6)),
+                "posecode": torch.from_numpy(data["posecode"]), #torch.zeros((data["expcode"].shape[0],6)),
                 "cam": torch.zeros((data["expcode"].shape[0],3)),
                 'detailcode':torch.zeros((data["expcode"].shape[0],128)),
                 'detailemocode':torch.zeros((data["expcode"].shape[0],0)),

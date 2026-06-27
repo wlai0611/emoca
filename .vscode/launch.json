@@ -25,7 +25,16 @@
             "program": "encode.py",
             "justMyCode": false,
             "console": "integratedTerminal",
-            "args": ["--videos","videos/test"]        
-        },            
+            "args": ["--videos","caer","--out","caer/npz"]        
+        },  
+        {
+            "name": "decode",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "decode.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": ["--npz","caer/npz","--obj","caer/obj"]        
+        },          
     ]   
 }
