@@ -28,6 +28,14 @@
             "args": ["--videos","caer","--out","caer/npz"]        
         },  
         {
+            "name": "debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "track.py",
+            "justMyCode": false,
+            "console": "integratedTerminal"     
+        },  
+        {
             "name": "decode",
             "type": "debugpy",
             "request": "launch",
@@ -35,6 +43,16 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": ["--npz","caer/npz","--obj","caer/obj"]        
-        },          
+        },     
+        {
+            "name": "render",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "simple_render.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "python":"C:\\Users\\Walter\\Documents\\render_env\\Scripts\\python.exe", 
+            "args":["--npz","../clooney/test.npz"]     
+        },    
     ]   
 }
