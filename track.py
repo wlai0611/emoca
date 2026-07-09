@@ -31,22 +31,6 @@ class VideoIterator(torch.utils.data.IterableDataset):
         yield self.frame_counter,self.timer,rgb_image, bgr_image
     self.reader.release()
 
-def process_face_crops(crops,resolution_inp=224):
-    #crops is Batch*Channels*Height*Width
-    processed  = torch.zeros(size=(len(crops),3,resolution_inp,resolution_inp),dtype=torch.float32,device=yolo.device.type)
-    for d,crop in enumerate(crops):
-      channels,height,width = crop.shape
-      best_box = (0,0,width,height)
-      new_size, center = get_face_center_size(best_box)
-      src_pts = square_crop(center,new_size)
-      DST_PTS = np.array([[0,0], [0,resolution_inp - 1], [resolution_inp - 1, 0]])
-      tform   = estimate_transform('similarity', src_pts, DST_PTS)
-      image   = crop.cpu().numpy().transpose(1,2,0)
-      dst_image=warp(image, tform.inverse, output_shape=(resolution_inp, resolution_inp))
-      dst_image= dst_image.transpose(2,0,1)
-      processed[d] = torch.tensor(dst_image).float()
-    return processed
-
 class BboxIterator(torch.utils.data.Dataset):
   def __init__(self,track_dict, frames, resolution_inp = 224):
     self.track_dict=track_dict
