@@ -133,20 +133,21 @@ def get_tracks(yolo, video, sample_frequency=4, outvideo=None):
   images = {}
   for b,(frames, times, processed_imgs, raw_imgs) in enumerate(loader):
     _,height,width,channels = raw_imgs.shape
+    processed_imgs = processed_imgs.to(device)
     if b==0 and outvideo:
       writer = cv2.VideoWriter(outvideo.as_posix(), fourcc, dataset.samples_per_second, (width,height))#704, 384
     result_per_img = yolo.track(processed_imgs,persist=True,iou=0.7,conf=0.8,verbose=False)
     for frame_num,t,img_boxes,raw_img,processed_img in zip(frames,times,result_per_img,raw_imgs,processed_imgs):
-      images[frame_num.item()] = processed_img
+      images[frame_num.item()] = processed_img.cpu()
       faces = img_boxes.boxes
       if faces.id is None:
         continue
-      track_ids = faces.id.numpy().astype(int).tolist()
-      raw_img = raw_img.numpy().astype(np.uint8)
+      track_ids = faces.id.cpu().numpy().astype(int).tolist()
+      raw_img = raw_img.cpu().numpy().astype(np.uint8)
       for track_id, face in zip(track_ids,faces):
         if track_id not in tracks:
           tracks[track_id] = {'t':[],'bbox':[],'frame_nums':[],'cumulative_area':0}
-        xyxy=face.xyxy.numpy().astype(int).tolist()
+        xyxy=face.xyxy.cpu().numpy().astype(int).tolist()
         x1,y1,x2,y2=xyxy[0]
         area = (x2-x1)*(y2-y1)
         tracks[track_id]['frame_nums'].append(frame_num.item())
@@ -179,12 +180,12 @@ def get_blendshapes(track, images):
   vert_series = []
   for timesteps,crops in crop_loader:
     timestamps.extend(timesteps.tolist())
-    processed = {'image': crops.unsqueeze(dim=1)}
+    processed = {'image': crops.unsqueeze(dim=1).to(device)}
     with torch.no_grad():
       codedict = emoca.encode(processed, training=False)
     with torch.no_grad():
       opdict = emoca.decode(codedict, training=False)
-    verts = opdict['verts']
+    verts = opdict['verts'].detach().cpu()
     vert_series.append(verts)
   vert_series = torch.concatenate(vert_series).numpy()
   return timestamps,vert_series
@@ -235,7 +236,7 @@ model_path = "assets/EMOCA/models"
 emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
 emoca.eval()
 emoca.to(device)
-triangles = emoca.deca.flame.faces_tensor.numpy()
+triangles = emoca.deca.flame.faces_tensor.cpu().numpy()
 
 videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
 yolo   = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
