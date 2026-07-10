@@ -33,7 +33,11 @@
             "request": "launch",
             "program": "track.py",
             "justMyCode": false,
-            "console": "integratedTerminal"     
+            "console": "integratedTerminal",
+            "args": ["--infolder","../test_videos/colors",
+                     "--outfolder","../test_videos/colors/processed",
+                     "--freq","10"
+             ]             
         },  
         {
             "name": "decode",
@@ -52,7 +56,7 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "python":"C:\\Users\\Walter\\Documents\\render_env\\Scripts\\python.exe", 
-            "args":["--npz","../test_videos/colors/npz/321_.npz"]     
+            "args":["--npz","../test_videos/colors/processed/321_/blendshapes.npz"]     
         },    
     ]   
 }

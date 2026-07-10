@@ -8,6 +8,8 @@ from gdl_apps.EMOCA.utils.load import load_model
 import logging
 import time
 import json
+import argparse
+import torch
 def get_frame(video_file, frame_idx):
   reader = cv2.VideoCapture(video_file)
   num_frames = int(reader.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -99,7 +101,7 @@ class BboxIterator(torch.utils.data.Dataset):
     dst_image= dst_image.transpose(2,0,1)
     return timestep, dst_image
 
-def get_tracks(video, sample_frequency=4, outvideo=None):
+def get_tracks(yolo, video, sample_frequency=4, outvideo=None):
   '''
   Video is the Path object pointing to MP4 or AVI video
   sample_frequency = how many bounding boxes to get per second
@@ -114,7 +116,7 @@ def get_tracks(video, sample_frequency=4, outvideo=None):
   metadata: dict of height, width and number of frames of image, sample_frequency
   '''
   tracks = {}
-  model  = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
+  
   if 'bbox' in video.name:
     return None, None, None
   dataset= VideoIterator(video_file=video.as_posix(), samples_per_second=sample_frequency)
@@ -133,7 +135,7 @@ def get_tracks(video, sample_frequency=4, outvideo=None):
     _,height,width,channels = raw_imgs.shape
     if b==0 and outvideo:
       writer = cv2.VideoWriter(outvideo.as_posix(), fourcc, dataset.samples_per_second, (width,height))#704, 384
-    result_per_img = model.track(processed_imgs,persist=True,iou=0.7,conf=0.8,verbose=False)
+    result_per_img = yolo.track(processed_imgs,persist=True,iou=0.7,conf=0.8,verbose=False)
     for frame_num,t,img_boxes,raw_img,processed_img in zip(frames,times,result_per_img,raw_imgs,processed_imgs):
       images[frame_num.item()] = processed_img
       faces = img_boxes.boxes
@@ -218,22 +220,37 @@ def save_mid_frame_with_bbox(track, video):
   cv2.rectangle(middle_image,(x1,y1),(x2,y2),color=(0,0,255))
   return middle_image
 
-logging.basicConfig(filename=f"preprocessing{time.time()}.log", level = logging.INFO)
-vidfolder= Path("../test_videos")
-
+parser=argparse.ArgumentParser(description="given a folder of videos, run face tracker, then EMOCA on the cropped face")
+parser.add_argument("--infolder",help="path to folder containing videos")
+parser.add_argument("--outfolder",help="path to folder to save processed data")
+parser.add_argument("--freq",help='number of blendshapes to create per second of video',type=int,default=4)
+parser.add_argument("--boxvids",action='store_true',help='whether save videos with bboxes')
+args = parser.parse_args()
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+vidfolder= Path(args.infolder)
+outfolder= Path(args.outfolder)
+outfolder.mkdir(exist_ok=True)
+logging.basicConfig(filename=outfolder/f"preprocessing{time.time()}.log", level = logging.INFO)
 model_path = "assets/EMOCA/models"
 emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
 emoca.eval()
+emoca.to(device)
 triangles = emoca.deca.flame.faces_tensor.numpy()
 
 videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
-
+yolo   = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
+yolo.to(device)
+logging.info(f"device {device}")
 for video in videos:
-  subfolder = vidfolder/video.stem
+  subfolder = outfolder/video.stem
   subfolder.mkdir(exist_ok=True)
   start = time.time()
-  outvideo = subfolder/"tracking.mp4"
-  tracks,images,metadata = get_tracks(video,outvideo=outvideo)
+  if args.boxvids:
+    outvideo = subfolder/"tracking.mp4"
+  else:
+    outvideo = None
+  yolo.predictor = None
+  tracks,images,metadata = get_tracks(yolo,video,sample_frequency=args.freq,outvideo=outvideo)
   if not tracks:
     logging.info(f'No face found in {video.as_posix()}')
     continue
@@ -251,7 +268,7 @@ for video in videos:
   print("###")
 
   timestamps, vert_series = get_blendshapes(best_track, images)
-  np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps)
+  np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps, freq=args.freq)
   json.dump(tracks,open(subfolder/"face_tracks.json","w"))
   logging.info(f"{video.stem} finished in {time.time()-start} seconds")
 
