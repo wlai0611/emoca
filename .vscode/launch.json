@@ -52,7 +52,7 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "python":"C:\\Users\\Walter\\Documents\\render_env\\Scripts\\python.exe", 
-            "args":["--npz","../clooney/test.npz"]     
+            "args":["--npz","../test_videos/colors/npz/321_.npz"]     
         },    
     ]   
 }

@@ -99,10 +99,11 @@ class BboxIterator(torch.utils.data.Dataset):
     dst_image= dst_image.transpose(2,0,1)
     return timestep, dst_image
 
-def get_tracks(video, sample_frequency=4, debug=False):
+def get_tracks(video, sample_frequency=4, outvideo=None):
   '''
   Video is the Path object pointing to MP4 or AVI video
   sample_frequency = how many bounding boxes to get per second
+  outvideo is the path to create another video in which bounding boxes overlayed on faces, default is omitted
   Returns
   tracks: dictionary tracking the location and timing of each persistent face in video:
   { 1:{bbox: [bbox0,bbox1,...,bboxT], frame_nums:[t0,t1,...tT],}, 
@@ -121,18 +122,16 @@ def get_tracks(video, sample_frequency=4, debug=False):
   
   fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
 
-  outvideo = vidfolder/f"{video.stem}_bbox.mp4"
-
   blue   = (33,29,159)
   green  = (0,128,255) 
   verde  = (141,141,35)
   white  = (255,255,255)
   colors = {0:blue,1:green,2:verde,3:white}
-
+  font  = cv2.FONT_HERSHEY_SIMPLEX
   images = {}
   for b,(frames, times, processed_imgs, raw_imgs) in enumerate(loader):
     _,height,width,channels = raw_imgs.shape
-    if b==0:
+    if b==0 and outvideo:
       writer = cv2.VideoWriter(outvideo.as_posix(), fourcc, dataset.samples_per_second, (width,height))#704, 384
     result_per_img = model.track(processed_imgs,persist=True,iou=0.7,conf=0.8,verbose=False)
     for frame_num,t,img_boxes,raw_img,processed_img in zip(frames,times,result_per_img,raw_imgs,processed_imgs):
@@ -153,10 +152,13 @@ def get_tracks(video, sample_frequency=4, debug=False):
         tracks[track_id]['bbox'].append(xyxy)
         tracks[track_id]['cumulative_area'] += area      
         color=colors.get(track_id,(0,0,0))
-        cv2.rectangle(raw_img,(x1,y1),(x2,y2),color=color)   
-        cv2.putText(raw_img, str(track_id),(x2,y2),font,1,color,2,cv2.LINE_AA) 
-      writer.write(raw_img) 
-  writer.release()
+        if outvideo:
+          cv2.rectangle(raw_img,(x1,y1),(x2,y2),color=color)   
+          cv2.putText(raw_img, str(track_id),(x2,y2),font,1,color,2,cv2.LINE_AA) 
+      if outvideo:
+        writer.write(raw_img) 
+  if outvideo:
+    writer.release()
 
   channels, height, width = processed_img.shape
   metadata = {}
@@ -165,62 +167,16 @@ def get_tracks(video, sample_frequency=4, debug=False):
   metadata['total_frames'] = dataset.total_frames
   return tracks, images, metadata
 
-logging.basicConfig(filename=f"preprocessing{time.time()}.log", level = logging.INFO)
-vidfolder= Path("../test_videos/colors")
-font  = cv2.FONT_HERSHEY_SIMPLEX
-coverage_weight = 1.
-area_weight = 1.
-
-model_path = "assets/EMOCA/models"
-emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
-emoca.eval()
-
-videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
-npz_folder = vidfolder/"npz"
-tracking_folder = vidfolder/"tracking"
-npz_folder.mkdir(exist_ok=True)
-tracking_folder.mkdir(exist_ok=True)
-for video in videos:
-  start = time.time()
-  tracks,images,metadata = get_tracks(video)
-  if not tracks:
-    logging.info(f'No face found in {video.as_posix()}')
-    continue
-  height = metadata['height']
-  width  = metadata['width']
-  total_area = height*width
-  nframe = metadata['total_frames']
-  if len(tracks) == 1:
-    best_track = list(tracks.values()).pop()
-  else:
-    top_2_tracks = []
-    for track_id,track in tracks.items():
-      track['score']=(area_weight*track["cumulative_area"]/total_area)+(coverage_weight*len(track["t"])/nframe)
-      top_2_tracks.append((track_id,track['score']))
-      top_2_tracks = sorted(top_2_tracks,key = lambda tupl:tupl[1],reverse=True)[:2]
-    #decide if video should be kept
-    best_track = tracks[top_2_tracks[0][0]]
-    runner_up  = tracks[top_2_tracks[1][0]]
-    if (best_track['score']-runner_up['score']) < 0.5:
-      logging.info(f"{video.stem} too many faces.  Scores {best_track['score']} and {runner_up['score']}")
-      continue
-  middle_frame = best_track['frame_nums'][len(best_track['frame_nums'])//2]
-  middle_bbox  = best_track['bbox'][len(best_track['frame_nums'])//2]
-  (x1,y1,x2,y2), = middle_bbox
-  middle_image = get_frame(video.as_posix(), middle_frame)
-  cv2.rectangle(middle_image,(x1,y1),(x2,y2),color=(0,0,255))
-  cv2.imwrite(video.parent/f"{video.stem}.jpg",middle_image)
-  print("###")
-  print(video.name)
-  print("###")
-
-  crop_dataset = BboxIterator(best_track, images)
+def get_blendshapes(track, images):
+  #track has format {bbox: [bbox0,bbox1,...,bboxT], frame_nums:[t0,t1,...tT],}
+  #images has format { 123: np.array, 234: np.array} each array is image 3*H*W
+  crop_dataset = BboxIterator(track, images)
   crop_loader  = torch.utils.data.DataLoader(crop_dataset, batch_size=4, shuffle=False)
 
-  times = []
+  timestamps = []
   vert_series = []
   for timesteps,crops in crop_loader:
-    times.extend(timesteps.tolist())
+    timestamps.extend(timesteps.tolist())
     processed = {'image': crops.unsqueeze(dim=1)}
     with torch.no_grad():
       codedict = emoca.encode(processed, training=False)
@@ -229,9 +185,74 @@ for video in videos:
     verts = opdict['verts']
     vert_series.append(verts)
   vert_series = torch.concatenate(vert_series).numpy()
-  triangles = emoca.deca.flame.faces_tensor.numpy() 
-  np.savez(npz_folder/f"{video.stem}.npz",triangles=triangles, verts=vert_series, times=times)
-  json.dump(tracks,open(tracking_folder/f"{video.stem}.json","w"))
+  return timestamps,vert_series
+
+def get_best_track(tracks,metadata,coverage_weight = 1.,area_weight = 1.):
+  '''
+    rank the face-tracks based on 
+    1) how much of the screen face occupies (area)
+    2) how long the face stays on screen (coverage)
+    return best track
+  '''
+  height = metadata['height']
+  width  = metadata['width']
+  total_area = height*width
+  nframe = metadata['total_frames']
+  top_2_tracks = []
+  for track_id,track in tracks.items():
+    track['score']=(area_weight*track["cumulative_area"]/total_area)+(coverage_weight*len(track["t"])/nframe)
+    top_2_tracks.append((track_id,track['score']))
+    top_2_tracks = sorted(top_2_tracks,key = lambda tupl:tupl[1],reverse=True)[:2]
+  #decide if video should be kept
+  best_track = tracks[top_2_tracks[0][0]]
+  runner_up  = tracks[top_2_tracks[1][0]]
+  if (best_track['score']-runner_up['score']) < 0.5:
+    return None
+  return best_track
+
+def save_mid_frame_with_bbox(track, video):
+  middle_frame = track['frame_nums'][len(track['frame_nums'])//2]
+  middle_bbox  = track['bbox'][len(track['frame_nums'])//2]
+  (x1,y1,x2,y2), = middle_bbox
+  middle_image = get_frame(video.as_posix(), middle_frame)
+  cv2.rectangle(middle_image,(x1,y1),(x2,y2),color=(0,0,255))
+  return middle_image
+
+logging.basicConfig(filename=f"preprocessing{time.time()}.log", level = logging.INFO)
+vidfolder= Path("../test_videos")
+
+model_path = "assets/EMOCA/models"
+emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
+emoca.eval()
+triangles = emoca.deca.flame.faces_tensor.numpy()
+
+videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
+
+for video in videos:
+  subfolder = vidfolder/video.stem
+  subfolder.mkdir(exist_ok=True)
+  start = time.time()
+  outvideo = subfolder/"tracking.mp4"
+  tracks,images,metadata = get_tracks(video,outvideo=outvideo)
+  if not tracks:
+    logging.info(f'No face found in {video.as_posix()}')
+    continue
+  if len(tracks) == 1:
+    best_track = list(tracks.values()).pop()
+  else:
+    best_track = get_best_track(tracks, metadata)
+    if best_track is None:
+      logging.info(f"{video.stem} too many faces")
+      continue
+  middle_image = save_mid_frame_with_bbox(best_track,video)
+  cv2.imwrite(subfolder/f"img_for_prompt.jpg",middle_image)
+  print("###")
+  print(video.name)
+  print("###")
+
+  timestamps, vert_series = get_blendshapes(best_track, images)
+  np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps)
+  json.dump(tracks,open(subfolder/"face_tracks.json","w"))
   logging.info(f"{video.stem} finished in {time.time()-start} seconds")
 
 """ writer = cv2.VideoWriter(outvideo.as_posix(), fourcc, dataset.samples_per_second, (704, 384))
