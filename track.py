@@ -99,32 +99,28 @@ class BboxIterator(torch.utils.data.Dataset):
     dst_image= dst_image.transpose(2,0,1)
     return timestep, dst_image
 
-logging.basicConfig(filename=f"preprocessing{time.time()}.log", level = logging.INFO)
-vidfolder= Path("../test_videos")
-font  = cv2.FONT_HERSHEY_SIMPLEX
-coverage_weight = 1.
-area_weight = 1.
-
-model_path = "assets/EMOCA/models"
-emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
-emoca.eval()
-
-videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
-npz_folder = vidfolder/"npz"
-tracking_folder = vidfolder/"tracking"
-npz_folder.mkdir(exist_ok=True)
-tracking_folder.mkdir(exist_ok=True)
-for video in videos:
-  start = time.time()
+def get_tracks(video, sample_frequency=4, debug=False):
+  '''
+  Video is the Path object pointing to MP4 or AVI video
+  sample_frequency = how many bounding boxes to get per second
+  Returns
+  tracks: dictionary tracking the location and timing of each persistent face in video:
+  { 1:{bbox: [bbox0,bbox1,...,bboxT], frame_nums:[t0,t1,...tT],}, 
+    2:{bbox: [bbox0,bbox1,...,bboxT], frame_nums:[t0,t1,...tT],}
+  }
+  images: dictionary mapping frame_num to actual image
+  { 123: np.array, 234: np.array} 
+  metadata: dict of height, width and number of frames of image, sample_frequency
+  '''
+  tracks = {}
   model  = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
   if 'bbox' in video.name:
-    continue
-  #video  = Path("../clooney/0489.avi")
-  dataset= VideoIterator(video_file=video.as_posix(), samples_per_second=4)
+    return None, None, None
+  dataset= VideoIterator(video_file=video.as_posix(), samples_per_second=sample_frequency)
   loader  = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=False)
-  tracks = {} #{Track1:[bbox0,bbox1], Track2:[bbox0,bbox1]}
+  
   fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-  fps = 4
+
   outvideo = vidfolder/f"{video.stem}_bbox.mp4"
 
   blue   = (33,29,159)
@@ -144,12 +140,12 @@ for video in videos:
       faces = img_boxes.boxes
       if faces.id is None:
         continue
-      track_ids = faces.id.numpy().astype(int)
+      track_ids = faces.id.numpy().astype(int).tolist()
       raw_img = raw_img.numpy().astype(np.uint8)
       for track_id, face in zip(track_ids,faces):
         if track_id not in tracks:
           tracks[track_id] = {'t':[],'bbox':[],'frame_nums':[],'cumulative_area':0}
-        xyxy=face.xyxy.numpy().astype(int)
+        xyxy=face.xyxy.numpy().astype(int).tolist()
         x1,y1,x2,y2=xyxy[0]
         area = (x2-x1)*(y2-y1)
         tracks[track_id]['frame_nums'].append(frame_num.item())
@@ -157,22 +153,45 @@ for video in videos:
         tracks[track_id]['bbox'].append(xyxy)
         tracks[track_id]['cumulative_area'] += area      
         color=colors.get(track_id,(0,0,0))
-        cv2.rectangle(raw_img,xyxy[0,:2],xyxy[0,2:],color=color)   
-        cv2.putText(raw_img, str(track_id),xyxy[0,[2,3]],font,1,color,2,cv2.LINE_AA) 
+        cv2.rectangle(raw_img,(x1,y1),(x2,y2),color=color)   
+        cv2.putText(raw_img, str(track_id),(x2,y2),font,1,color,2,cv2.LINE_AA) 
       writer.write(raw_img) 
   writer.release()
 
+  channels, height, width = processed_img.shape
+  metadata = {}
+  metadata['height'] = height
+  metadata['width']  = width
+  metadata['total_frames'] = dataset.total_frames
+  return tracks, images, metadata
+
+logging.basicConfig(filename=f"preprocessing{time.time()}.log", level = logging.INFO)
+vidfolder= Path("../test_videos/colors")
+font  = cv2.FONT_HERSHEY_SIMPLEX
+coverage_weight = 1.
+area_weight = 1.
+
+model_path = "assets/EMOCA/models"
+emoca, conf = load_model(model_path,"EMOCA_v2_lr_mse_20","detail")
+emoca.eval()
+
+videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
+npz_folder = vidfolder/"npz"
+tracking_folder = vidfolder/"tracking"
+npz_folder.mkdir(exist_ok=True)
+tracking_folder.mkdir(exist_ok=True)
+for video in videos:
+  start = time.time()
+  tracks,images,metadata = get_tracks(video)
   if not tracks:
     logging.info(f'No face found in {video.as_posix()}')
     continue
-
-  channels, height, width = processed_img.shape
+  height = metadata['height']
+  width  = metadata['width']
   total_area = height*width
-  nframe = dataset.total_frames
-
+  nframe = metadata['total_frames']
   if len(tracks) == 1:
     best_track = list(tracks.values()).pop()
-  
   else:
     top_2_tracks = []
     for track_id,track in tracks.items():
@@ -187,8 +206,9 @@ for video in videos:
       continue
   middle_frame = best_track['frame_nums'][len(best_track['frame_nums'])//2]
   middle_bbox  = best_track['bbox'][len(best_track['frame_nums'])//2]
+  (x1,y1,x2,y2), = middle_bbox
   middle_image = get_frame(video.as_posix(), middle_frame)
-  cv2.rectangle(middle_image,middle_bbox[0,:2],middle_bbox[0,2:],color=(0,0,255))
+  cv2.rectangle(middle_image,(x1,y1),(x2,y2),color=(0,0,255))
   cv2.imwrite(video.parent/f"{video.stem}.jpg",middle_image)
   print("###")
   print(video.name)
