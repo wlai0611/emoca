@@ -242,6 +242,7 @@ videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
 yolo   = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
 yolo.to(device)
 logging.info(f"device {device}")
+logging.info(f"{len(videos)} videos found")
 for video in videos:
   subfolder = outfolder/video.stem
   subfolder.mkdir(exist_ok=True)
