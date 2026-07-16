@@ -139,6 +139,7 @@ def get_tracks(yolo, video, sample_frequency=4, outvideo=None):
     result_per_img = yolo.track(processed_imgs,persist=True,iou=0.7,conf=0.8,verbose=False)
     for frame_num,t,img_boxes,raw_img,processed_img in zip(frames,times,result_per_img,raw_imgs,processed_imgs):
       images[frame_num.item()] = processed_img.cpu()
+      channels,processed_height,processed_width=processed_img.shape
       faces = img_boxes.boxes
       if faces.id is None:
         continue
@@ -150,6 +151,10 @@ def get_tracks(yolo, video, sample_frequency=4, outvideo=None):
         xyxy=face.xyxy.cpu().numpy().astype(int).tolist()
         x1,y1,x2,y2=xyxy[0]
         area = (x2-x1)*(y2-y1)
+        if x2<=x1 or y2<=y1:
+          continue
+        if x2<=0 or y2<=0 or x1>=processed_width or y1>=processed_height:
+          continue
         tracks[track_id]['frame_nums'].append(frame_num.item())
         tracks[track_id]['t'].append(t.item())
         tracks[track_id]['bbox'].append(xyxy)
@@ -243,36 +248,39 @@ yolo   = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
 yolo.to(device)
 logging.info(f"device {device}")
 logging.info(f"{len(videos)} videos found")
-for video in videos:
-  subfolder = outfolder/video.stem
-  subfolder.mkdir(exist_ok=True)
-  start = time.time()
-  if args.boxvids:
-    outvideo = subfolder/"tracking.mp4"
-  else:
-    outvideo = None
-  yolo.predictor = None
-  tracks,images,metadata = get_tracks(yolo,video,sample_frequency=args.freq,outvideo=outvideo)
-  if not tracks:
-    logging.info(f'No face found in {video.as_posix()}')
-    continue
-  if len(tracks) == 1:
-    best_track = list(tracks.values()).pop()
-  else:
-    best_track = get_best_track(tracks, metadata)
-    if best_track is None:
-      logging.info(f"{video.stem} too many faces")
+for vidnum,video in enumerate(videos):
+  try:  
+    subfolder = outfolder/video.stem
+    subfolder.mkdir(exist_ok=True)
+    start = time.time()
+    if args.boxvids:
+      outvideo = subfolder/"tracking.mp4"
+    else:
+      outvideo = None
+    yolo.predictor = None
+    tracks,images,metadata = get_tracks(yolo,video,sample_frequency=args.freq,outvideo=outvideo)
+    if not tracks:
+      logging.info(f'No face found in {video.as_posix()}')
       continue
-  middle_image = save_mid_frame_with_bbox(best_track,video)
-  cv2.imwrite(subfolder/f"img_for_prompt.jpg",middle_image)
-  print("###")
-  print(video.name)
-  print("###")
+    if len(tracks) == 1:
+      best_track = list(tracks.values()).pop()
+    else:
+      best_track = get_best_track(tracks, metadata)
+      if best_track is None:
+        logging.info(f"{video.stem} too many faces")
+        continue
+    middle_image = save_mid_frame_with_bbox(best_track,video)
+    cv2.imwrite(subfolder/f"img_for_prompt.jpg",middle_image)
+    print("###")
+    print(video.name)
+    print("###")
 
-  timestamps, vert_series = get_blendshapes(best_track, images)
-  np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps, freq=args.freq)
-  json.dump(tracks,open(subfolder/"face_tracks.json","w"))
-  logging.info(f"{video.stem} finished in {time.time()-start} seconds")
+    timestamps, vert_series = get_blendshapes(best_track, images)
+    np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps, freq=args.freq)
+    json.dump(tracks,open(subfolder/"face_tracks.json","w"))
+    logging.info(f"{video.stem} finished in {time.time()-start} seconds")
+  except Exception as e:
+    logging.exception(f"{video.stem} error with {e.args} and {e.__class__.__name__} on line {e.__traceback__.tb_lineno}")
 
 """ writer = cv2.VideoWriter(outvideo.as_posix(), fourcc, dataset.samples_per_second, (704, 384))
 for i,(time, frame, raw) in enumerate(loader):
