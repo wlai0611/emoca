@@ -256,7 +256,7 @@ emoca.to(device)
 triangles = emoca.deca.flame.faces_tensor.cpu().numpy()
 
 videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
-
+videos = sorted(videos,key = lambda file: file.stem)
 logging.info(f"device {device}")
 logging.info(f"{len(videos)} videos found")
 for vidnum,video in enumerate(videos):
