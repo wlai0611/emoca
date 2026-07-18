@@ -101,7 +101,7 @@ class BboxIterator(torch.utils.data.Dataset):
     dst_image= dst_image.transpose(2,0,1)
     return timestep, dst_image
 
-def get_tracks(yolo, video, sample_frequency=4, outvideo=None):
+def get_tracks(yolo, video, sample_frequency=4, outvideo=None, batch_size=4):
   '''
   Video is the Path object pointing to MP4 or AVI video
   sample_frequency = how many bounding boxes to get per second
@@ -120,11 +120,11 @@ def get_tracks(yolo, video, sample_frequency=4, outvideo=None):
   if 'bbox' in video.name:
     return None, None, None
   dataset= VideoIterator(video_file=video.as_posix(), samples_per_second=sample_frequency)
-  loader  = torch.utils.data.DataLoader(dataset, batch_size=4, shuffle=False)
+  loader  = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
   
   fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
 
-  blue   = (33,29,159)
+  blue   = (33,29,159)#
   green  = (0,128,255) 
   verde  = (141,141,35)
   white  = (255,255,255)
@@ -175,11 +175,11 @@ def get_tracks(yolo, video, sample_frequency=4, outvideo=None):
   metadata['total_frames'] = dataset.total_frames
   return tracks, images, metadata
 
-def get_blendshapes(track, images):
+def get_blendshapes(track, images, batch_size):
   #track has format {bbox: [bbox0,bbox1,...,bboxT], frame_nums:[t0,t1,...tT],}
   #images has format { 123: np.array, 234: np.array} each array is image 3*H*W
   crop_dataset = BboxIterator(track, images)
-  crop_loader  = torch.utils.data.DataLoader(crop_dataset, batch_size=4, shuffle=False)
+  crop_loader  = torch.utils.data.DataLoader(crop_dataset, batch_size=batch_size, shuffle=False)
 
   timestamps = []
   vert_series = []
@@ -191,10 +191,10 @@ def get_blendshapes(track, images):
     processed = {'image': crops.unsqueeze(dim=1).to(device)}
     with torch.no_grad():
       codedict = emoca.encode(processed, training=False)
-    #codedict['shapecode'][:,:] = 0
     posecode.append(codedict['posecode'].clone().detach().cpu())
     shapecode.append(codedict['shapecode'].clone().detach().cpu())
     expcode.append(codedict['expcode'].clone().detach().cpu())
+    codedict['shapecode'][:,:] = 0
     codedict['posecode'][:,:3] = 0
     with torch.no_grad():
       opdict = emoca.decode(codedict, training=False)
@@ -242,6 +242,7 @@ parser.add_argument("--infolder",help="path to folder containing videos")
 parser.add_argument("--outfolder",help="path to folder to save processed data")
 parser.add_argument("--freq",help='number of blendshapes to create per second of video',type=int,default=4)
 parser.add_argument("--boxvids",action='store_true',help='whether save videos with bboxes')
+parser.add_argument("--batch_size",type=int,default=4,help="How many images to EMOCA at once")
 args = parser.parse_args()
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 vidfolder= Path(args.infolder)
@@ -269,7 +270,7 @@ for vidnum,video in enumerate(videos):
     else:
       outvideo = None
     yolo.predictor = None
-    tracks,images,metadata = get_tracks(yolo,video,sample_frequency=args.freq,outvideo=outvideo)
+    tracks,images,metadata = get_tracks(yolo,video,sample_frequency=args.freq,outvideo=outvideo,batch_size=args.batch_size)
     if not tracks:
       logging.info(f'No face found in {video.as_posix()}')
       continue
@@ -286,7 +287,7 @@ for vidnum,video in enumerate(videos):
     print(video.name)
     print("###")
 
-    timestamps, vert_series,posecode,shapecode,expcode = get_blendshapes(best_track, images)
+    timestamps, vert_series,posecode,shapecode,expcode = get_blendshapes(best_track, images, batch_size=args.batch_size)
     np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps, freq=args.freq,posecode=posecode,shapecode=shapecode,expcode=expcode)
     json.dump(tracks,open(subfolder/"face_tracks.json","w"))
     logging.info(f"{video.stem} finished in {time.time()-start} seconds")
