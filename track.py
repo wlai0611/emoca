@@ -256,8 +256,7 @@ emoca.to(device)
 triangles = emoca.deca.flame.faces_tensor.cpu().numpy()
 
 videos = list(vidfolder.glob("*.mp4"))+list(vidfolder.glob("*.avi"))
-yolo   = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
-yolo.to(device)
+
 logging.info(f"device {device}")
 logging.info(f"{len(videos)} videos found")
 for vidnum,video in enumerate(videos):
@@ -269,7 +268,8 @@ for vidnum,video in enumerate(videos):
       outvideo = subfolder/"tracking.mp4"
     else:
       outvideo = None
-    yolo.predictor = None
+    yolo   = YOLO('assets/YOLO/yolov8n-face-lindevs.pt')
+    yolo.to(device)
     tracks,images,metadata = get_tracks(yolo,video,sample_frequency=args.freq,outvideo=outvideo,batch_size=args.batch_size)
     if not tracks:
       logging.info(f'No face found in {video.as_posix()}')
