@@ -183,17 +183,28 @@ def get_blendshapes(track, images):
 
   timestamps = []
   vert_series = []
+  posecode  = []
+  shapecode = []
+  expcode   = []
   for timesteps,crops in crop_loader:
     timestamps.extend(timesteps.tolist())
     processed = {'image': crops.unsqueeze(dim=1).to(device)}
     with torch.no_grad():
       codedict = emoca.encode(processed, training=False)
+    #codedict['shapecode'][:,:] = 0
+    posecode.append(codedict['posecode'].clone().detach().cpu())
+    shapecode.append(codedict['shapecode'].clone().detach().cpu())
+    expcode.append(codedict['expcode'].clone().detach().cpu())
+    codedict['posecode'][:,:3] = 0
     with torch.no_grad():
       opdict = emoca.decode(codedict, training=False)
     verts = opdict['verts'].detach().cpu()
     vert_series.append(verts)
+  shapecode = torch.concatenate(shapecode).numpy()
+  posecode = torch.concatenate(posecode).numpy()
+  expcode = torch.concatenate(expcode).numpy()
   vert_series = torch.concatenate(vert_series).numpy()
-  return timestamps,vert_series
+  return timestamps,vert_series,posecode,shapecode,expcode
 
 def get_best_track(tracks,metadata,coverage_weight = 1.,area_weight = 1.):
   '''
@@ -275,8 +286,8 @@ for vidnum,video in enumerate(videos):
     print(video.name)
     print("###")
 
-    timestamps, vert_series = get_blendshapes(best_track, images)
-    np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps, freq=args.freq)
+    timestamps, vert_series,posecode,shapecode,expcode = get_blendshapes(best_track, images)
+    np.savez(subfolder/"blendshapes.npz",triangles=triangles, verts=vert_series, times=timestamps, freq=args.freq,posecode=posecode,shapecode=shapecode,expcode=expcode)
     json.dump(tracks,open(subfolder/"face_tracks.json","w"))
     logging.info(f"{video.stem} finished in {time.time()-start} seconds")
   except Exception as e:
