@@ -159,7 +159,7 @@ def mux_audio_video(video_path, wav_path, out_path):
 if __name__=="__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("--npz",help='path to NPY file of predictions from FaceFormer')
-  #parser.add_argument("--wav",help="WAV file of audio")
+  parser.add_argument("--wav",help="WAV file of audio")
   args = parser.parse_args()
   npy_file = Path(args.npz)
   parent_folder = npy_file.parent
@@ -168,6 +168,7 @@ if __name__=="__main__":
   pred = np.load(npy_file)
   verts = pred['verts']
   triangles = pred['triangles']
+  fps = int(pred['freq'].item())
   # if flattened, reshape it
   #if pred.ndim == 2 and pred.shape[1] == 5023 * 3:
   #  pred = pred.reshape(-1, 5023, 3)
@@ -176,7 +177,8 @@ if __name__=="__main__":
     sequence_vertices=verts,
     triangles=triangles,
     out_mp4=silent_mp4_file,
-    fps=4,   # FaceFormer used 30 for vocaset rendering script
+    fps=fps,   # FaceFormer used 30 for vocaset rendering script
     background_black=True
   )
-  #mux_audio_video(silent_mp4_file.as_posix(),args.wav,audio_mp4_file.as_posix())
+  if args.wav:
+    mux_audio_video(silent_mp4_file.as_posix(),args.wav,audio_mp4_file.as_posix())
